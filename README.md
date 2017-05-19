@@ -1,440 +1,390 @@
-# Table of Contents
+Insight Data Engineering - Coding Challenge
+===========================================================
 
-1. [Challenge Summary] (README.md#challenge-summary)
-2. [Details of Implementation] (README.md#details-of-implementation)
-3. [Building the Venmo Graph] (README.md#building-the-venmo-graph)
-4. [Maintain data within the 60 second window] (README.md#maintain-data-within-the-60-second-window)
-5. [Dealing with payments that arrive out of time] (README.md#dealing-with-payments-that-arrive-out-of-time)
-6. [Collecting payments from Venmo API] (README.md#collecting-payments-from-venmo-api)
-7. [Writing clean, scalable, and well-tested code] (README.md#writing-clean-scalable-and-well-tested-code)
-8. [Repo directory structure] (README.md#repo-directory-structure)
-9. [Testing your directory structure and output format] (README.md#testing-your-directory-structure-and-output-format)
-10. [FAQ] (README.md#faq)
+For this coding challenge, you will develop tools that could help analyze the community of Twitter users.  For simplicity, the features we will build are primitive, but you could easily build more complicated features on top of these.   
 
-For this coding challenge, you will develop tools that could help analyze Venmo’s dataset. Some of the challenges here mimic real world problems.
+## Challenge Summary
 
+This challenge is to implement two features:
 
-##Challenge Summary
+1. Clean and extract the text from the raw JSON tweets that come from the Twitter Streaming API, and track the number of tweets that contain unicode.
+2. Calculate the average degree of a vertex in a Twitter hashtag graph for the last 60 seconds, and update this each time a new tweet appears.
 
-[Back to Table of Contents] (README.md#table-of-contents)
+Here, we have to define a few concepts (though there will be examples below to clarify):
 
-This challenge requires you to:
+- A tweet's text is considered "clean" once all of the escape characters (e.g. \n, \", \/ ) and unicode have been removed.
+- A Twitter hashtag graph is a graph connecting all the hashtags that have been mentioned together in a single tweet.
 
-- Use Venmo payments that stream in to build a  graph of users and their relationship with one another.
+## Details of Implementation
 
-- Calculate the median degree of a vertex in a graph and update this each time a new Venmo payment appears. You will be calculating the median degree across a 60-second sliding window.
+We'd like you to implement your own version of these two features.  However, we don't want this challenge to focus on the relatively uninteresting "dev ops" of connecting to the Twitter API, which can be complicated for some users.  Normally, tweets can be obtained through Twitter's API in JSON format, but you may assume that this has already been done and written to a file named `tweets.txt` inside a directory named `tweet_input`.  For simplicity, this file `tweets.txt` will only contain the actual JSON messages (in reality, the API also can emit messages about the connection and the API rate limits).  Additionally, `tweets.txt` will have the content of each tweet on a newline:
 
-The vertices on the graph represent Venmo users and whenever one user pays another user, an edge is formed between the two users.
+tweets.txt:
 
-##Details of implementation
-
-[Back to Table of Contents] (README.md#table-of-contents)
-
-We'd like you to implement your own version of this. However, we don't want this challenge to focus on the relatively uninteresting "DevOps" of connecting to the Venmo API. Normally, payments can be obtained through Venmo’s API, but you may assume this has already been done, and data has been written to a file named `venmo-trans.txt` in a directory called `venmo_input`.
-
-This file `venmo-trans.txt` will contain the actual JSON messages with each payment on a newline:
-
-`venmo-trans.txt`:
-
-	{JSON of first payment}  
-	{JSON of second payment}  
-	{JSON of third payment}  
+	{JSON of first tweet}  
+	{JSON of second tweet}  
+	{JSON of third tweet}  
 	.
 	.
 	.
-	{JSON of last payment}  
- 
-One example of the data for a single Venmo payment might look like:
+	{JSON of last tweet}  
+
+## First Feature
+
+The point of the first feature is to extract and clean the relevant data for the Twitter JSON messages.  For example, a typical tweet might come in the following JSON message (which we have expanded on to multiple lines to make it easier to read):
 
 <pre>
-{"created_time": "2014-03-27T04:28:20Z", "target": "Jamie-Korn", "actor": "Jordan-Gruber"}
+{
+ "created_at":"<b>Thu Oct 29 17:51:01 +0000 2015</b>","id":659789759787589632,
+ "id_str":"659789759787589632","text":"<b>Spark Summit East this week! #Spark #Apache</b>",
+ "source":"\u003ca href=\"http:\/\/twitter.com\" rel=\"nofollow\"\u003eTwitter Web Client\u003c\/a\u003e",
+ "truncated":false,"in_reply_to_status_id":null,"in_reply_to_status_id_str":null,
+ "in_reply_to_user_id":null,"in_reply_to_user_id_str":null,"in_reply_to_screen_name":null,
+ "user":{"id":40077534,"id_str":"40077534","name":"scott bordow","screen_name":"sbordow",
+ "location":null,"url":null,"description":"azcentral sports high school sports columnist. If you send me a tweet, you consent to letting azcentral sports use and showcase it in any media.",
+ "protected":false,"verified":true,"followers_count":4704,"friends_count":2249,"listed_count":94,
+ "favourites_count":51,"statuses_count":15878,"created_at":"Thu May 14 20:36:46 +0000 2009",
+ "utc_offset":-25200,"time_zone":"Pacific Time (US & Canada)","geo_enabled":true,"lang":"en",
+ "contributors_enabled":false,"is_translator":false,"profile_background_color":"C0DEED",
+ "profile_background_image_url":"http:\/\/abs.twimg.com\/images\/themes\/theme1\/bg.png",
+ "profile_background_image_url_https":"https:\/\/abs.twimg.com\/images\/themes\/theme1\/bg.png",
+ "profile_background_tile":false,"profile_link_color":"0084B4","profile_sidebar_border_color":"C0DEED",
+ "profile_sidebar_fill_color":"DDEEF6","profile_text_color":"333333","profile_use_background_image":true,
+ "profile_image_url":"http:\/\/pbs.twimg.com\/profile_images\/576178462496423936\/YnOZ-StV_normal.jpeg",
+ "profile_image_url_https":"https:\/\/pbs.twimg.com\/profile_images\/576178462496423936\/YnOZ-StV_normal.jpeg",
+ "default_profile":true,"default_profile_image":false,"following":null,"follow_request_sent":null,"notifications":null},
+ "geo":null,"coordinates":null,"place":{"id":"a612c69b44b2e5da","url":"https:\/\/api.twitter.com\/1.1\/geo\/id\/a612c69b44b2e5da.json","place_type":"admin","name":"Arizona","full_name":"Arizona, USA","country_code":"US",
+ "country":"United States","bounding_box":{"type":"Polygon","coordinates":[[[-114.818269,31.332246],[-114.818269,37.004261],[-109.045152,37.004261],[-109.045152,31.332246]]]},
+ "attributes":{}},"contributors":null,"is_quote_status":false,"retweet_count":0,"favorite_count":0,
+ "entities":{"hashtags":[],"urls":[],"user_mentions":[],"symbols":[]},
+ "favorited":false,"retweeted":false,"filter_level":"low","lang":"en","timestamp_ms":"1446141111691"
+}  
 </pre>
 
-You will update the graph and its associated median degree each time you process a new payment. The graph should only consist of payments with timestamps that are 60 seconds or less from the maximum timestamp that has been processed.
+where the relevant text that we want to extract has been bolded.  After extracting this information, this tweet should be outputted as
+
+	Spark Summit East this week! #Spark #Apache (timestamp: Thu Oct 29 17:51:01 +0000 2015)
+
+with the format of 
+
+	<contents of "text" field> (timestamp: <contents of "created_at" field>)
+
+In this case, the tweet's text was already clean, but another example tweet might be:
+
+<pre>
+{
+ "created_at":"<b>Thu Oct 29 18:10:49 +0000 2015</b>","id":659794531844509700,"id_str":"659794531844509700",
+ "text":"<b>I'm at Terminal de Integra\u00e7\u00e3o do Varadouro in Jo\u00e3o Pessoa, PB https:\/\/t.co\/HOl34REL1a</b>",
+ "source":"\u003ca href=\"http:\/\/foursquare.com\" rel=\"nofollow\"\u003eFoursquare\u003c\/a\u003e",
+ "truncated":false,"in_reply_to_status_id":null,"in_reply_to_status_id_str":null,"in_reply_to_user_id":null,
+ "in_reply_to_user_id_str":null,"in_reply_to_screen_name":null,"user":{"id":60196177,"id_str":"60196177","name":"Jo\u00e3o Cassimiro","screen_name":"Jcassimironeto","location":"Paraiba","url":"http:\/\/www.facebook.com\/profile.php?id=1818814650",
+ "description":"jcassimironeto","protected":false,"verified":false,"followers_count":240,"friends_count":654,
+ "listed_count":0,"favourites_count":26,"statuses_count":2065,"created_at":"Sun Jul 26 01:15:03 +0000 2009",
+ "utc_offset":-7200,"time_zone":"Brasilia","geo_enabled":true,"lang":"pt","contributors_enabled":false,
+ "is_translator":false,"profile_background_color":"022330","profile_background_image_url":"http:\/\/pbs.twimg.com\/profile_background_images\/671814600\/1028c894ede2eb444ebfd12f94f6cb93.jpeg",
+ "profile_background_image_url_https":"https:\/\/pbs.twimg.com\/profile_background_images\/671814600\/1028c894ede2eb444ebfd12f94f6cb93.jpeg",
+ "profile_background_tile":true,"profile_link_color":"0084B4","profile_sidebar_border_color":"FFFFFF",
+ "profile_sidebar_fill_color":"C0DFEC","profile_text_color":"333333","profile_use_background_image":true,
+ "profile_image_url":"http:\/\/pbs.twimg.com\/profile_images\/618238977565433856\/YM1aKFZj_normal.jpg",
+ "profile_image_url_https":"https:\/\/pbs.twimg.com\/profile_images\/618238977565433856\/YM1aKFZj_normal.jpg",
+ "profile_banner_url":"https:\/\/pbs.twimg.com\/profile_banners\/60196177\/1395970110","default_profile":false,
+ "default_profile_image":false,"following":null,"follow_request_sent":null,"notifications":null},
+ "geo":{"type":"Point","coordinates":[-7.11792683,-34.88985837]},"coordinates":{"type":"Point",
+ "coordinates":[-34.88985837,-7.11792683]},"place":{"id":"c9f2f46c0d1b963d","url":"https:\/\/api.twitter.com\/1.1\/geo\/id\/c9f2f46c0d1b963d.json","place_type":"city","name":"Jo\u00e3o Pessoa","full_name":"Jo\u00e3o Pessoa, Para\u00edba","country_code":"BR","country":"Brasil","bounding_box":{"type":"Polygon",
+ "coordinates":[[[-34.971299,-7.243257],[-34.971299,-7.055696],[-34.792907,-7.055696],[-34.792907,-7.243257]]]},"attributes":{}},
+ "contributors":null,"is_quote_status":false,"retweet_count":0,"favorite_count":0,"entities":{"hashtags":[],
+ "urls":[{"url":"https:\/\/t.co\/HOl34REL1a","expanded_url":"https:\/\/www.swarmapp.com\/c\/2tATygSTvBu",
+ "display_url":"swarmapp.com\/c\/2tATygSTvBu","indices":[62,85]}],"user_mentions":[],"symbols":[]},
+ "favorited":false,"retweeted":false,"possibly_sensitive":false,"filter_level":"low","lang":"pt","timestamp_ms":"1446142249438"
+}
+</pre>
 
-As new payments come in, edges that were formed between users with payments older than 60 seconds from the maximum timestamp should be evicted. For each incoming payment, extract the specified following fields from the JSON response:
+Now, the tweet's text needs to be cleaned by replacing the escape characters and removing the non-ASCII unicode characters to get the result:
 
-	actor
-	target
-	created_time
-	
-The `created_time` field can be used in lieu of a timestamp.
+	I'm at Terminal de Integrao do Varadouro in Joo Pessoa, PB https://t.co/HOl34REL1a (timestamp: Thu Oct 29 18:10:49 +0000 2015)
 
-##Building the Venmo Graph
-[Back to Table of Contents] (README.md#table-of-contents)
+Perhaps it would make more sense to convert the unicode to similar ASCII letters, but we would like you to remove them instead for simplicity.  To help decide whether it would be worth spending more time on the unicode (perhaps for a future version of this feature), you will have to track the number of tweets that contain unicode, and write the following message at the bottom of the output file (with a newline preceding it):
 
-Here is an example of the extracted information from eight payments:
+	<number of tweets that had unicode> tweets contained unicode.
 
-	actor = Jordan-Gruber,	 	target = Jamie-Korn, 		created_time: 2016-04-07T03:33:19Z
-	actor = Maryann-Berry, 		target = Jamie-Korn, 		created_time: 2016-04-07T03:33:19Z
-	actor = Ying-Mo, 			target = Maryann-Berry, 	created_time: 2016-04-07T03:33:19Z
-	actor = Jamie-Korn, 		target = Ying-Mo, 			created_time: 2016-04-07T03:34:18Z
-	actor = Maryann-Berry, 		target = Maddie-Franklin, 	created_time: 2016-04-07T03:34:58Z
-	actor = Maryann-Berry, 		target = Ying-Mo, 			created_time: 2016-04-07T03:34:00Z
-	actor = Natalie-Piserchio, 	target = Rebecca-Waychunas, created_time: 2016-04-07T03:31:18Z
-	actor = Nick-Shirreffs, 	target = Connor-Liebman, 	created_time: 2016-04-07T03:35:02Z
+Your program should output the results of this first feature to a text file named `ft1.txt` in a directory named `tweet_output`, with each new tweet on a newline.  To be clear, if `tweets.txt` originally contained the following tweets:
+```
+{"created_at":"Thu Oct 29 17:51:01 +0000 2015","id":659789756637822976,"id_str":"659789756637822976","text":"Spark Summit East this week! #Spark #Apache","source":"\u003ca href=\"http:\/\/twitter.com\/download\/iphone\" rel=\"nofollow\"\u003eTwitter for iPhone\u003c\/a\u003e","truncated":false,"in_reply_to_status_id":null,"in_reply_to_status_id_str":null,"in_reply_to_user_id":42353977,"in_reply_to_user_id_str":"42353977","in_reply_to_screen_name":"KayKay121","user":{"id":317846866,"id_str":"317846866","name":"BaddieWinkleIsBae","screen_name":"WhoIsPetlo","location":"Polokwane | Grahamstown ","url":null,"description":"Extrovert","protected":false,"verified":false,"followers_count":767,"friends_count":393,"listed_count":0,"favourites_count":891,"statuses_count":41162,"created_at":"Wed Jun 15 15:31:30 +0000 2011","utc_offset":-10800,"time_zone":"Greenland","geo_enabled":true,"lang":"en","contributors_enabled":false,"is_translator":false,"profile_background_color":"C0DEED","profile_background_image_url":"http:\/\/abs.twimg.com\/images\/themes\/theme1\/bg.png","profile_background_image_url_https":"https:\/\/abs.twimg.com\/images\/themes\/theme1\/bg.png","profile_background_tile":false,"profile_link_color":"0084B4","profile_sidebar_border_color":"C0DEED","profile_sidebar_fill_color":"DDEEF6","profile_text_color":"333333","profile_use_background_image":true,"profile_image_url":"http:\/\/pbs.twimg.com\/profile_images\/659384066798694401\/Ogdtb4HJ_normal.jpg","profile_image_url_https":"https:\/\/pbs.twimg.com\/profile_images\/659384066798694401\/Ogdtb4HJ_normal.jpg","profile_banner_url":"https:\/\/pbs.twimg.com\/profile_banners\/317846866\/1443969906","default_profile":true,"default_profile_image":false,"following":null,"follow_request_sent":null,"notifications":null},"geo":null,"coordinates":null,"place":{"id":"59efa64f5c8f5340","url":"https:\/\/api.twitter.com\/1.1\/geo\/id\/59efa64f5c8f5340.json","place_type":"city","name":"Grahamstown","full_name":"Grahamstown, South Africa","country_code":"ZA","country":"South Africa","bounding_box":{"type":"Polygon","coordinates":[[[26.479477,-33.326355],[26.479477,-33.270332],[26.560003,-33.270332],[26.560003,-33.326355]]]},"attributes":{}},"contributors":null,"is_quote_status":false,"retweet_count":0,"favorite_count":0,"entities":{"hashtags":[],"urls":[],"user_mentions":[{"screen_name":"KayKay121","name":"KK_Rakitla95","id":42353977,"id_str":"42353977","indices":[0,10]}],"symbols":[],"media":[{"id":659789679491858432,"id_str":"659789679491858432","indices":[68,91],"media_url":"http:\/\/pbs.twimg.com\/tweet_video_thumb\/CSgLN8CUwAAzgez.png","media_url_https":"https:\/\/pbs.twimg.com\/tweet_video_thumb\/CSgLN8CUwAAzgez.png","url":"https:\/\/t.co\/HjZR3d5QaQ","display_url":"pic.twitter.com\/HjZR3d5QaQ","expanded_url":"http:\/\/twitter.com\/WhoIsPetlo\/status\/659789756637822976\/photo\/1","type":"photo","sizes":{"thumb":{"w":150,"h":150,"resize":"crop"},"small":{"w":300,"h":300,"resize":"fit"},"large":{"w":300,"h":300,"resize":"fit"},"medium":{"w":300,"h":300,"resize":"fit"}}}]},"extended_entities":{"media":[{"id":659789679491858432,"id_str":"659789679491858432","indices":[68,91],"media_url":"http:\/\/pbs.twimg.com\/tweet_video_thumb\/CSgLN8CUwAAzgez.png","media_url_https":"https:\/\/pbs.twimg.com\/tweet_video_thumb\/CSgLN8CUwAAzgez.png","url":"https:\/\/t.co\/HjZR3d5QaQ","display_url":"pic.twitter.com\/HjZR3d5QaQ","expanded_url":"http:\/\/twitter.com\/WhoIsPetlo\/status\/659789756637822976\/photo\/1","type":"animated_gif","sizes":{"thumb":{"w":150,"h":150,"resize":"crop"},"small":{"w":300,"h":300,"resize":"fit"},"large":{"w":300,"h":300,"resize":"fit"},"medium":{"w":300,"h":300,"resize":"fit"}},"video_info":{"aspect_ratio":[1,1],"variants":[{"bitrate":0,"content_type":"video\/mp4","url":"https:\/\/pbs.twimg.com\/tweet_video\/CSgLN8CUwAAzgez.mp4"}]}}]},"favorited":false,"retweeted":false,"possibly_sensitive":false,"filter_level":"low","lang":"en","timestamp_ms":"1446141110940"}
+{"created_at":"Thu Oct 29 18:10:49 +0000 2015","id":659794531844509700,"id_str":"659794531844509700","text":"I'm at Terminal de Integra\u00e7\u00e3o do Varadouro in Jo\u00e3o Pessoa, PB https:\/\/t.co\/HOl34REL1a","source":"\u003ca href=\"http:\/\/foursquare.com\" rel=\"nofollow\"\u003eFoursquare\u003c\/a\u003e","truncated":false,"in_reply_to_status_id":null,"in_reply_to_status_id_str":null,"in_reply_to_user_id":null,"in_reply_to_user_id_str":null,"in_reply_to_screen_name":null,"user":{"id":60196177,"id_str":"60196177","name":"Jo\u00e3o Cassimiro","screen_name":"Jcassimironeto","location":"Paraiba","url":"http:\/\/www.facebook.com\/profile.php?id=1818814650","description":"jcassimironeto","protected":false,"verified":false,"followers_count":240,"friends_count":654,"listed_count":0,"favourites_count":26,"statuses_count":2065,"created_at":"Sun Jul 26 01:15:03 +0000 2009","utc_offset":-7200,"time_zone":"Brasilia","geo_enabled":true,"lang":"pt","contributors_enabled":false,"is_translator":false,"profile_background_color":"022330","profile_background_image_url":"http:\/\/pbs.twimg.com\/profile_background_images\/671814600\/1028c894ede2eb444ebfd12f94f6cb93.jpeg","profile_background_image_url_https":"https:\/\/pbs.twimg.com\/profile_background_images\/671814600\/1028c894ede2eb444ebfd12f94f6cb93.jpeg","profile_background_tile":true,"profile_link_color":"0084B4","profile_sidebar_border_color":"FFFFFF","profile_sidebar_fill_color":"C0DFEC","profile_text_color":"333333","profile_use_background_image":true,"profile_image_url":"http:\/\/pbs.twimg.com\/profile_images\/618238977565433856\/YM1aKFZj_normal.jpg","profile_image_url_https":"https:\/\/pbs.twimg.com\/profile_images\/618238977565433856\/YM1aKFZj_normal.jpg","profile_banner_url":"https:\/\/pbs.twimg.com\/profile_banners\/60196177\/1395970110","default_profile":false,"default_profile_image":false,"following":null,"follow_request_sent":null,"notifications":null},"geo":{"type":"Point","coordinates":[-7.11792683,-34.88985837]},"coordinates":{"type":"Point","coordinates":[-34.88985837,-7.11792683]},"place":{"id":"c9f2f46c0d1b963d","url":"https:\/\/api.twitter.com\/1.1\/geo\/id\/c9f2f46c0d1b963d.json","place_type":"city","name":"Jo\u00e3o Pessoa","full_name":"Jo\u00e3o Pessoa, Para\u00edba","country_code":"BR","country":"Brasil","bounding_box":{"type":"Polygon","coordinates":[[[-34.971299,-7.243257],[-34.971299,-7.055696],[-34.792907,-7.055696],[-34.792907,-7.243257]]]},"attributes":{}},"contributors":null,"is_quote_status":false,"retweet_count":0,"favorite_count":0,"entities":{"hashtags":[],"urls":[{"url":"https:\/\/t.co\/HOl34REL1a","expanded_url":"https:\/\/www.swarmapp.com\/c\/2tATygSTvBu","display_url":"swarmapp.com\/c\/2tATygSTvBu","indices":[62,85]}],"user_mentions":[],"symbols":[]},"favorited":false,"retweeted":false,"possibly_sensitive":false,"filter_level":"low","lang":"pt","timestamp_ms":"1446142249438"}
+```
 
-Two users will be connected if they are present in a payment. 
+then the output in `ft1.txt` should contain:
+```
+Spark Summit East this week! #Spark #Apache (timestamp: Thu Oct 29 17:51:01 +0000 2015)
+I'm at Terminal de Integrao do Varadouro in Joo Pessoa, PB https://t.co/HOl34REL1a (timestamp: Thu Oct 29 18:10:49 +0000 2015)
 
-<b>NOTE:</b> The order of the payments coming in <b>might not be ordered by time</b> (we'll see an example below on how to deal with payments that are out of order in time), which mimics what one would get from a streaming API.
+1 tweets contained unicode.
+```
 
-A good way to create this graph is with an edge list where an edge is defined by two users who are involved in a payment transaction.
+## Second Feature
+The second feature will continually update the Twitter hashtag graph and hence, the average degree of the graph. The graph should just be built using tweets that arrived in the last 60 seconds as compared to the timestamp of the latest tweet. As new tweets come in, edges formed with tweets older than 60 seconds from the timstamp of the latest tweet should be evicted. For each incoming tweet, only extract the following fields in the JSON response
+* "hastags" - hashtags found in the tweet
+* "created_at" - timestamp of the tweet
 
-In this case, the first payment that enters the system has a timestamp of `2016-04-07T03:33:19Z` and the edge formed is
+### Building the Twitter Hashtag Graph
+Example of 4 tweets (using the same format from the first feature)
+```
+Spark Summit East this week! #Spark #Apache (timestamp: Thu Oct 29 17:51:01 +0000 2015)
+Just saw a great post on Insight Data Engineering #Apache #Hadoop #Storm (timestamp: Thu Oct 29 17:51:30 +0000 2015)
+Doing great work #Apache (timestamp: Thu Oct 29 17:51:55 +0000 2015)
+Excellent post on #Flink and #Spark (timestamp: Thu Oct 29 17:51:56 +0000 2015)
+```
 
-	Jordan-Gruber <-> Jamie-Korn
+Extracted hashtags from each tweet
+```
+#Spark, #Apache (timestamp: Thu Oct 29 17:51:01 +0000 2015)
+#Apache, #Hadoop, #Storm (timestamp: Thu Oct 29 17:51:30 +0000 2015)
+#Apache (timestamp: Thu Oct 29 17:51:55 +0000 2015)
+#Flink, #Spark (timestamp: Thu Oct 29 17:51:56 +0000 2015)
+```
 
-![venmo-graph](images/htag_graph_1.png)
+Two hashtags will be connected if and only if they are present in the same tweet. Only tweets that contain two or more **DISTINCT** hashtags can create new edges.
 
-The degree of each node is defined as the number of connected neighboring nodes. The median degree is the middle value of all of the degrees in the graph.
+A good way to create this graph is with an edge list where an edge is defined by two hashtags that are connected. 
 
-In this case, the median degree is calculated from this set of values: {1, 1}
+The edge list made by all the above tweets is as follows:
+```
+#Spark <-> #Apache
 
-![venmo-graph](images/htag_graph_1-1.png)
+#Apache <-> #Hadoop
+#Hadoop <-> #Storm
+#Storm <-> #Apache
 
-Therefore, the rolling median degree output is
+#Flink <-> #Spark
+```
 
-	1.00
+Notice that the third tweet did not generate a new edge since there were no other hashtags besides `#Apache` in that tweet. Also, all tweets occured in the 60 seconds time window as compared to the latest tweet and they all are included in building the graph.
 
-The second payment that arrives is in order and forms new edges in the graph.
+The edge list can be visualized with the following diagrams where each node is a hashtag. The first tweet will generate the `#Spark` and `#Apache` nodes.
 
-	Jordan-Gruber <-> Jamie-Korn
+![spark-apache-graph](images/htag_graph_1.png)
 
-	Maryann-Berry <-> Jamie-Korn
+The second tweet contains 3 hashtags `#Apache`, `#Hadoop`, and `#Storm`. `#Apache` already exists, so only `#Hadoop` and `#Storm` are added to the graph.
 
-The graph now has three nodes and two edges
+![apache-hadoop-storm-graph](images/htag_graph_2.png)
 
-![venmo-graph](images/htag_graph_2.png)
+The third tweet generated no edges, so no new nodes will be added to the graph.
 
-Median Degree of {1, 1, 2} = 1.00
+The fourth tweet contains `#Flink` and `#Spark`. `#Spark` already exists, so only `#Flink` will be added.
 
-![venmo-graph](images/htag_graph_2-1.png)
+![flink-spark-graph](images/htag_graph_3.png)
 
-The rolling median degree output is
+We can now calculate the degree of each node which is defined as the number of connected neighboring nodes.
 
-	1.00
-	1.00
+![graph-degree3](images/htag_degree_3.png)
 
-With the third payment coming in, these edges are formed:
+The average degree for simplicity will be calculated by summing the degrees of all nodes in all graphs and dividing by the total number of nodes in all graphs.
 
-	Jordan-Gruber <-> Jamie-Korn
+Average Degree = (1+2+3+2+2)/5 = 2.00
 
-	Maryann-Berry <-> Jamie-Korn
+The rolling average degree is now 
+```
+2.00
+```
 
-	Ying-Mo <-> Maryann-Berry
+### Modifying the Twitter Hashtag Graph with Incoming Tweet
+Now let's say another tweet has arrived
+```
+New and improved #HBase connector for #Spark (timestamp: Thu Oct 29 17:51:59 +0000 2015)
+```
 
-The graph now has four nodes and three edges:
+The extracted hashtags are then
+```
+#HBase, #Spark (timestamp: Thu Oct 29 17:51:59 +0000 2015)
+```
 
-![venmo-graph](images/htag_graph_3.png)
+and added to the edge list
+```
+#Spark <-> #Apache
 
-![venmo-graph](images/htag_graph_3-1.png)
+#Apache <-> #Hadoop
+#Hadoop <-> #Storm
+#Storm <-> #Apache
 
-The degrees are {1, 1, 2, 2} and the median is the average of the two middle values, 1 and 2 -- or 1.50.
+#Flink <-> #Spark
 
-The rolling median degree output now becomes:
+#HBase <-> $Spark
+```
 
-	1.00
-	1.00
-	1.50
+The graph now looks like the following
 
-The fourth payment that comes also is in order of time and forms new edges. The edges in the graph are:
+![hbase-spark-graph](images/htag_graph_4.png)
 
-	Jordan-Gruber <-> Jamie-Korn
+with the updated degree calculation for each node. Here only `#Spark` needs to be incremented due to the additional `#HBase` node.
 
-	Maryann-Berry <-> Jamie-Korn
+![graph-degree4](images/htag_degree_4.png)
 
-	Ying-Mo <-> Maryann-Berry
+The average degree will be recalculated using the same formula as before.
 
-	Jamie-Korn <-> Ying-Mo
+Average Degree = (1+3+1+3+2+2)/6 = 2.00
 
-The fourth payment adds no new nodes but increases the edges, and therefore, degrees on some of the nodes. 
+The rolling average degree is now 
+```
+2.00
+2.00
+```
 
-![venmo-graph](images/htag_graph_4.png)
+### Maintaining Data within the 60 Second Window
+Now let's say that the next tweet that comes in has the following timestamp
+```
+New 2.7.1 version update for #Hadoop #Apache (timestamp: Thu Oct 29 17:52:05 +0000 2015)
+```
 
-![venmo-graph](images/htag_graph_4-1.png)
+The full list of tweets now is 
+```
+Spark Summit East this week! #Spark #Apache (timestamp: Thu Oct 29 17:51:01 +0000 2015)
+Just saw a great post on Insight Data Engineering #Apache #Hadoop #Storm (timestamp: Thu Oct 29 17:51:30 +0000 2015)
+Doing great work #Apache (timestamp: Thu Oct 29 17:51:55 +0000 2015)
+Excellent post on #Flink and #Spark (timestamp: Thu Oct 29 17:51:56 +0000 2015)
+New and improved #HBase connector for #Spark (timestamp: Thu Oct 29 17:51:59 +0000 2015)
+New 2.7.1 version update for #Hadoop #Apache (timestamp: Thu Oct 29 17:52:05 +0000 2015)
+```
 
-The set of degrees becomes {1, 2, 2, 3}, making the median 2.00 
+We can see that the very first tweet has a timestamp that is more than 60 seconds behind this new tweet. This means that we do not want to include this tweet in our average degree calculation.
 
-The rolling median degree output at the end of fourth payment is
+The new hashtags to be used are as follows
+```
+#Apache, #Hadoop, #Storm (timestamp: Thu Oct 29 17:51:30 +0000 2015)
+#Apache (timestamp: Thu Oct 29 17:51:55 +0000 2015)
+#Flink, #Spark (timestamp: Thu Oct 29 17:51:56 +0000 2015)
+#HBase, #Spark (timestamp: Thu Oct 29 17:51:59 +0000 2015)
+#Hadoop #Apache (timestamp: Thu Oct 29 17:52:05 +0000 2015)
+```
 
-	1.00
-	1.00
-	1.50
-	2.00
-	
-Note that all the payments arrive in a timely order in this example, and for every incoming payment, all the old payments sit within the 60 second window from the timestamp of the latest incoming payment. Hence, no payments are evicted (we'll see an example below on how the edge eviction should be handled with time).
+The new edge list only has the `#Spark` <-> `#Apache` edge removed since `#Hadoop` <-> `#Apache` from the new tweet already exists in the edge list.
+```
+#Apache <-> #Hadoop
+#Hadoop <-> #Storm
+#Storm <-> #Apache
 
-##Maintain data within the 60-second window
-[Back to Table of Contents] (README.md#table-of-contents)
+#Flink <-> #Spark
 
-Now let's say that the next payment comes in and the extracted information is 
+#HBase <-> $Spark
+```
 
-	actor = Maryann-Berry, 	target = Maddie-Franklin, 	created_time: 2016-04-07T03:34:58Z
+The old graph has now been disconnected forming two graphs.
 
-Extracted information from the five payments is
+![evicted-spark-apache](images/htag_graph_5.png)
 
-	actor = Jordan-Gruber, 	target = Jamie-Korn, 		created_time: 2016-04-07T03:33:19Z
-	actor = Maryann-Berry, 	target = Jamie-Korn, 		created_time: 2016-04-07T03:33:19Z
-	actor = Ying-Mo, 		target = Maryann Berry, 	created_time: 2016-04-07T03:33:19Z
-	actor = Jamie-Korn, 	target = Ying-Mo, 			created_time: 2016-04-07T03:34:18Z
-	actor = Maryann-Berry, 	target = Maddie-Franklin, 	created_time: 2016-04-07T03:34:58Z
-	
-We can see that the first three payments have a timestamp that is more than 60 seconds older than this new payment. This means that the edges formed by the three payments should be evicted and should not be included in our median degree calculation.
+We'll then calculate the new degree for all the nodes in both graphs.
 
-The revised information to be used in constructing the graph is as follows:
+![graph-degree5](images/htag_degree_5.png)
 
-	actor = Jamie-Korn, 	target = Ying-Mo, 			created_time: 2016-04-07T03:34:18Z
-	actor = Maryann-Berry, 	target = Maddie-Franklin, 	created_time: 2016-04-07T03:34:58Z
+Recalculating the average degree of all nodes in all graphs is as follows
 
-The edge list is now:
-	
-	Jamie-Korn <-> Ying-Mo
-	
-	Maryann-Berry <-> Maddie-Franklin
-	
-The graph has now changed to: 
+```
+Average Degree = (1+2+1+2+2+2)/6 = 1.67
+```
 
-![venmo-graph](images/htag_graph_5.png)
+Normally the average degree is calculated for a single graph, but maintaining multiple graphs for this problem can be quite difficult. For simplicity we are only interested in calculating the average degree of of all the nodes in all graphs despite them being disconnected.
 
-![venmo-graph](images/htag_graph_5-1.png)
+The rolling average degree is now 
+```
+2.00
+2.00
+1.67
+```
 
-The rolling median degree, recalculated from {1, 1, 1, 1}, = 1.00 
+The output of the second feature should be a file in the `tweet_output` directory named `ft2.txt` that contains the rolling average for each tweet in the file (e.g. if there are three input tweets, then there should be 3 averages), following the format above.  The precision of the average should be two digits after the decimal place (i.e. rounded to the nearest hundredths place).
 
-Normally, the median degree is calculated for a single graph, but maintaining multiple graphs for this problem can be quite difficult. For simplicity, we are only interested in calculating the median degree of all the nodes in all graphs despite them being disconnected.
+## Collecting tweets from the Twitter API
+Ideally, the second feature that updates the average degree of a Twitter hashtag graph as each tweet arrives would be connected to the Twitter streaming API and would add new tweets to the end of `tweets.txt`.  However, connecting to the API requires more system specific "dev ops" work, which isn't the primary focus for data engineers.  Instead, you should simply assume that each new line of the text file corresponds to a new tweet and design your program to handle a text file with a large number of tweets.  Your program should output the results of this second feature to a text file named `ft2.txt` in the `tweet_output` directory.
 
-The list of rolling median degrees now becomes:
 
-	1.00
-	1.00
-	1.50
-	2.00
-	1.00
+## Writing clean, scalable, and well-tested code  
+As a data engineer, it’s important that you write clean, well-documented code that scales for large amounts of data.  For this reason, it’s important to ensure that your solution works well for a huge number of tweets, rather than just the simple examples above.  For example, your solution should be able to account for a large number of tweets coming in a short period of time, and need to keep up with the input (i.e. need to process a minute of tweets in less than a minute).  It's also important to use software engineering best practices like unit tests, especially since public data is not clean and predictable.  For more details about the implementation, please refer to the FAQ below or email us at cc@insightdataengineering.com
 
-##Dealing with payments that arrive out of time
-[Back to Table of Contents] (README.md#table-of-contents)
+You may write your solution in any mainstream programming language such as C, C++, C#, Clojure, Erlang, Go, Haskell, Java, Python, Ruby, or Scala - then submit a link to a Github repo with your source code.  In addition to the source code, the top-most directory of your repo must include the `tweet_input` and `tweet_output` directories, and a shell script named `run.sh` that compiles and runs the program(s) that implement these features.  If your solution requires additional libraries, environments, or dependencies, you must specify these in your README documentation.  See the figure below for the required structure of the top-most directory in your repo, or simply clone this repo.
 
-Payments that are out of order and fall within the 60 second window of the maximum timestamp processed, or in other words, are less than 60 seconds from the maximum timestamp being processed, will create new edges in the graph. 
+## Repo directory structure
+![Example Repo Structure](images/directory-pic.png)
 
-However, payments that are out of order in time and outside the 60-second window (or more than 60 seconds from the maximum timestamp being processed) should be ignored. Such payments won't contribute to building the graph. Below is a diagram showing this situation, with the nth payment corresponding the payment on the nth line of the `venmo-trans.txt` file.
+Alternatively, here is example output of the `tree` command:
 
-![venmo-graph](images/htag_graph_6.png)
+	├── README.md  
+	├── run.sh  
+	├── src  
+	│   ├── average_degree.py  
+	│   └── tweets_cleaned.py  
+	├── tweet_input  
+	│   └── tweets.txt  
+	└── tweet_output  
+	    ├── ft1.txt  
+	    └── ft2.txt  
 
-Continuing our example, another new payment comes in with the following extracted information:
 
-	actor = Maryann-Berry, target = Ying-Mo, created_time: 2016-04-07T03:34:00Z
+## FAQ
 
-This payment is out of order but its timestamp still falls within the 60-second time window of the maximum timestamp that has been processed. (i.e., `2016-04-07T03:34:58Z`)
-
-So the edge list is now
-
-	actor = Jamie-Korn,    target = Ying-Mo, 		 created_time: 2016-04-07T03:34:18Z
-	actor = Maryann-Berry, target = Maddie-Franklin, created_time: 2016-04-07T03:34:58Z
-	actor = Maryann-Berry, target = Ying-Mo, 		 created_time: 2016-04-07T03:34:00Z
-	
-![venmo-graph](images/htag_graph_7.png)
-
-![venmo-graph](images/htag_graph_7-1.png)
-
-The median degree now calculated from {1, 1, 2, 2} = 1.50. The list of rolling median degrees becomes:
-
-	1.00
-	1.00
-	1.50
-	2.00
-	1.00
-	1.50
-	
-Another payment now arrives
-
-	actor = Natalie-Piserchio, target = Rebecca-Waychunas, created_time: 2016-04-07T03:31:18Z
-
-But this payment is out of order and its timestamp is outside of the maximum timestamp last processed (i.e., `2016-04-07T03:34:58Z`). This payment should be ignored. It will not form any new edges and will not contribute to the graph. The graph remains the same as before this payment arrived. 
-
-The rolling median is the same as before: {1, 1, 2, 2} = 1.50. 
-	
-	1.00
-	1.00
-	1.50
-	2.00
-	1.00
-	1.50
-	1.50
-
-Finally, another payment arrives with this information:
-
-	actor = Nick-Shirreffs, target = Connor-Liebman, created_time: 2016-04-07T03:35:02Z
-
-Because this payment now has the latest timestamp of `2016-04-07T03:35:02Z`, we must add it to our graph while pruning the nodes and edges that fall outside of the 60-second-window (i.e., edge between `Maryann-Berry` and `Ying-Mo` must be removed)
-
-The payments now represented in the graph are:
-
-	actor = Jamie-Korn, 	target = Ying-Mo, 		  created_time: 2016-04-07T03:34:18Z
-	actor = Maryann-Berry,  target = Maddie-Franklin, created_time: 2016-04-07T03:34:58Z
-	actor = Nick-Shirreffs, target = Connor-Liebman,  created_time: 2016-04-07T03:35:02Z
-	
-![venmo-graph](images/htag_graph_8.png)
-
-![venmo-graph](images/htag_graph_8-1.png)
-
-The new median degree, calculated from {1, 1, 1, 1, 1, 1} = 1.00 and our new list of rolling medians is
-
-	1.00
-	1.00
-	1.50
-	2.00
-	1.00
-	1.50
-	1.50
-	1.00
-
-The output should be a file in the `venmo_output` directory named `output.txt` that contains the rolling median for each transaction in the file (e.g. if there are three input transactions, then there should be 3 medians), following the format above. The precision of the median should be two digits after the decimal place with truncation.
-
-##Collecting payments from Venmo API
-
-[Back to Table of Contents] (README.md#table-of-contents)
-
-Ideally, the updates to the median degree of the graph would be connected to the Venmo streaming API and would add new payment to the end of `venmo-trans.txt`. However, connecting to the API has been discontinued for new users, and even if it were possible, would require more system specific "DevOps" work, which isn't the primary focus for data engineers. 
-
-Instead, you should simply assume that each new line of the text file corresponds to a new Venmo payment and design your program to handle a text file with a large number of payments. Your program should output the results to a text file named `output.txt` in the `venmo_output` directory.
-
-##Writing clean, scalable and well-tested code
-[Back to Table of Contents] (README.md#table-of-contents)
-
-As a data engineer, it’s important that you write clean, well-documented code that scales for large amounts of data. For this reason, it’s important to ensure that your solution works well for a huge number of payments, rather than just the simple examples above. 
-
-For example, your solution should be able to account for a large number of payments coming in a short period of time, and need to keep up with the input (i.e. need to process a minute of payments in less than a minute). 
-
-It's also important to use software engineering best practices like **unit tests**, especially since public data is not clean and predictable. For more details about the implementation, please refer to the FAQ below or email us at <mailto:cc@insightdataengineering.com>
-
-You may write your solution in any mainstream programming language such as C, C++, C#, Clojure, Erlang, Go, Haskell, Java, Python, Ruby, or Scala. Once completed, submit a link to a Github repo with your source code. 
-
-In addition to the source code, the top-most directory of your repo must include the `venmo_input` and `venmo_output` directories, and a shell script named `run.sh` that compiles and runs the program(s) that implement these features. 
-
-If your solution requires additional libraries, environments, or dependencies, you must specify these in your README documentation. See the figure below for the required structure of the top-most directory in your repo, or simply clone this repo.
-
-##Repo directory structure
-[Back to Table of Contents] (README.md#table-of-contents)
-
-Example Repo Structure
-
-	├── README.md 
-	├── run.sh
-	├── src
-	│  	└── median_degree.java
-	├── venmo_input
-	│   └── venmo-trans.txt
-	├── venmo_output
-	│   └── output.txt
-	└── insight_testsuite
-	 	   ├── run_tests.sh
-		   └── tests
-	        	└── test-1-venmo-trans
-        		│   ├── venmo_input
-        		│   │   └── venmo-trans.txt
-        		│   └── venmo_output
-        		│       └── output.txt
-        		└── your-own-test
-            		 ├── venmo_input
-            		 │	  └── venmo-trans.txt
-            		 └── venmo_output
-            			  └── output.txt
-
-The contents of `src` do not have to contain the single file called `"median_degree.java"`, you are free to include one or more files and name them as you wish.
-
-##Testing your directory structure and output format
-[Back to Table of Contents] (README.md#table-of-contents)
-
-To make sure that your code has the correct directory structure and the format of the output data in `output.txt` is correct, we included a test script, called `run_tests.sh` in the `insight_testsuite` folder.
-
-The tests are stored simply as text files under the `insight_testsuite/tests` folder. Each test should have a separate folder and in it should be a `venmo_input` folder for `venmo-trans.txt` and `venmo_output` folder for `output.txt` corresponding to the current test.
-
-You can run the test with the following from the `insight_testsuite` folder:
-
-	insight_testsuite$ ./run_tests.sh 
-
-The output of `run_tests.sh` should look like:
-
-	[FAIL]: test-1-venmo-trans
-	[Tue Mar 29 2016 11:59:59] 0 of 1 tests passed
-	on failed tests and
-	
-	[PASS]: test-1-venmo-trans
-	[Tue Mar 29 2016 11:59:59] 1 of 1 tests passed
-	on success
-
-One test has been provided as a way to check your formatting and simulate how we will be running tests when you submit your solution. We urge you to write your own additional tests here as well as for your own programming language. `run_tests.sh` should alert you if the directory structure is incorrect.
-
-Your submission must pass at least the provided test in order to pass the coding challenge.
-
-#FAQ
-
-Here are some common questions we've received.  If you have additional questions, please email us at cc@insightdataengineering.com and we'll answer your questions as quickly as we can.
+Here are some common questions we've received.  If you have additional questions, feel free fork this repo, add them to the README.md, then issue a pull request.  Alternatively, you can email cc@insightdataengineering.com and we'll add the answers as quickly as we can.
 
 * *Which Github link should I submit?*  
-You should submit the URL for the top-level root of your repository.  For example, this repo would be submitted by copying the URL `https://github.com/InsightDataScience/coding-challenge` into the appropriate field on the application.  Please do NOT try to submit your coding challenge using a pull request, which will make your source code publicly available.  
+You should submit the URL for the top-level root of your repository.  For example, this repo would be submitted by copying the URL `https://github.com/InsightDataScience/cc-example` into the appropriate field on the application.  Please do NOT try to submit your coding challenge using a pull request, which will make your source code publicly available.  
 
 * *Do I need a private Github repo?*  
-No, you may use a public repo, there is no need to purchase a private repo.  You may also submit a link to a Bitbucket repo if you prefer.
-
-* *How should I account for transactions that are missing an "actor" field?*  
-These errors in the input should be ignored by your program with correct exception handling.  They should not affect your graph, and should not result in a new line in the output file.  For simplicity, we have removed these entries from the sample file we have provided.
-
-* *Are transactions edges directed?  If person A sends a payment to person B, is that different than if person B sends a payment to person A?*  
-No, for simplicity the edges in the graph should be undirected.  Nodes are connected with an edge regardless of the direction of payment.  
+No, you may use a public repo, there is no need to purchase a private repo.   
 
 * *Do you have any larger sample inputs?*  
-Yes, we have provided a sample of approximately 1,800 transactions in the `data-gen` directory of this repo.
+Yes, we have just added an example input with 10,000 tweets in the `data-gen` directory of this repo.  It also contains a simplified producer that can connect to the live Twitter API and save the tweets to an input file that conforms to the requirements of this data challenge.  This is not required for this challenge, but may be helpful for testing your solution.  
 
 * *May I use R or other analytics programming languages to solve the challenge?*  
 While you may use any programming language to complete the challenge, it's important that your implementation scales to handle large amounts of data.  Many applicants have found that R is unable to process data in a scalable fashion, so it may be more practical to use another language.  
 
 * *May I use distributed technologies like Hadoop or Spark?*  
-While you're welcome to use any language or technology, it will be tested on a single machine so there may not be a significant benefit to using these technologies prior to the program.  With that said, learning about distributed systems is a valuable skill for all data engineers.
+While you're welcome to use any language or technology, it will be tested on a single machine so there may not be a significant benefit to using these technologies prior to the program.  With that said, learning distributed systems would be a valuable skill for all data engineers.
 
 * *What sort of system should I use to run my program on (Windows, Linux, Mac)?*  
-You may write your solution on any system, but your code should be portable and work on all systems.  In particular, your code must be able to run on either Unix or Linux, as that's the system that will be used for testing.  This means that you must submit a working `run.sh` script.  Linux machines are the industry standard for most data engineering teams, so it is helpful to be familiar with this.  If you're currently using Windows, we recommend using tools like Cygwin or Docker,  or a free online IDE such as Cloud9 (c9.io).  
-  
+You may write your solution on any system, but your code should be portable and work on all systems.  In particular, your code must be able to run on either Unix or Linux, as that's what the system will be tested on.  This means that you must submit a working `run.sh` script.  Linux machines are the industry standard for most data engineering companies, so it is helpful to be familiar with this.  If you're currently using Windows, we recommend using Cygwin or a free online IDE such as Cloud9 (c9.io).  
+
+* *When are two hashtags considered the same?*  
+Hashtags must be the same, but are NOT case-sensitive.  So `#Spark`, `#spark`, and `#SPARK` should all be counted as the same hashtag.  
+
+* *What should I do with tweets that don't have at least two hashtags?*  
+These tweets still need to be processed, which may evict older tweets from the 60-second window that affects the graph, but they will not lead to new nodes or edges in the graph.  Tweets with only one hashtag should NOT create nodes.  
+
 * *Can I use pre-built packages, modules, or libraries?*   
-This coding challenge can be completed without any "exotic" packages.  While you may use publicly available packages, modules, or libraries, you must document any dependencies in your accompanying `README` file.  When we review your submission, we will download these libraries and attempt to run your program.  If you do use a package, you should always ensure that the module you're using works efficiently for the specific use-case in the challenge, since many libraries are not designed for large amounts of data.
+Yes, you may use any publicly available package, module, or library as long as you document any dependencies in your accompanying `README` file.  When we review your submission, we will download these libraries and attempt to run your program.   This is why it's very important that you document any dependencies or system specific details in your accompanying README file.  However, you should always ensure that the module you're using works efficiently for the specific use-case in the challenge, many libraries are not designed for large amounts of data.
 
 * *Will you email me if my code doesn't run?*   
-Unfortunately, we receive hundreds of submissions in a very short time and are unable to email individuals if code doesn't compile or run.  This is why it's so important to document any dependencies you have, as described in the previous question.  We will do everything we can to properly test your code, but this requires good documentation.  More so, we have provided a test suite so you can confirm that your directory structure is correct.
+Unfortunately, we receive hundreds of submissions in a very short time and are unable to email individuals if code doesn't compile or run.  This is why it's so important to document any dependencies you have, as described in the previous question.  We will do everything we can to properly test your code, but this requires good documentation.  
 
 * *Do I need to use multi-threading?*   
-No, your solution doesn't necessarily need to include multi-threading - there are many solutions that don't require multiple threads/cores or any distributed systems, but instead use efficient data structures.  
+No, your solution doesn't necessarily need to include multi-threading - there are many solutions that don't require multiple threads/cores or any distributed systems.  
 
-* *Do I need to account for an updating `venmo-trans.txt` file?*   
-No, your solution doesn't have to re-process `venmo-trans.txt`.  Instead, it should be designed to handle a very large input size.  If you were doing this project as a data engineer in industry, you would probably use a scheduler to run your program daily in batches, but this is beyond the scope of this challenge.  
+* *Do I need to account for and updating `tweets.txt` file?*   
+No, your solution doesn't have to re-process `tweets.txt`.  Instead, it should be designed to handle a very large input size.  If you were doing this project as a data engineer in industry, you would probably re-run your program daily to handle batches, but this is beyond the scope of this challenge.  
 
 * *What should the format of the output be?*  
-In order to be tested correctly, you must use the format described above.  You can ensure that you have the correct format by using the testing suite we've included.  If you are still unable to get the correct format from the messages in the suite, please email us at cc@insightdataengineering.com.
+In order to be tested correctly, you must use the format described above.  We will try our best to correct any minor formatting issues, but try to follow the examples above as closely as possible.  
 
-* *What should the precision of the median be?*  
-The precision of the median should be truncated to two digits after the decimal place (e.g. 5/3 should be outputted as 1.66).  
+* *What should the precision of the rolling average be?*  
+The precision of the average should be two digits after the decimal place (i.e. rounded to the nearest hundredths place).  
 
-* *Do I need to update the median when the next payment in the file falls outside the 60-second window?*  
-Yes, you're median should be updated each time a new payment is processed, regardless of if it falls outside the window.  Thus, if there are 500 lines in the input file, and 5 are incorrectly formatted (perhaps missing the actor field), then there should be 495 lines of median degree in `output.txt`. 
-
-* *Should the 60-second window be inclusive or exclusive?  In other words, for a 60-second window that ends with `01:02:30`, does it begin `01:01:30` or `01:01:31`?*  
-The 60-second window should be exclusive.  In other words, a correct window of 60 seconds is from `01:01:31` to `01:02:30`.  Given that this nuance may be confusing, our testing suite is tolerant to exclusive or inclusive windows - both windows will be considered valid.  
-
-* *Should my graph contain disconnected nodes?*                                       
-No, the graph should only contain connected nodes, and this also means that you may need to remove nodes if they are no longer connected once payments are evicted from the 60-second window.  
+* *Do I need to account for complicated Unicode characters by replacing them?*  
+No, you simply need to remove them and track how many tweets require this removal.  
 
 * *Should I check if the files in the input directory are text files or non-text files(binary)?*  
-No, for simplicity you may assume that all of the files in the input directory are standard text files, with the same format as described above.
+No, for simplicity you may assume that all of the files in the input directory are standard text files.  
 
-* *If there are multiple payments within a 60-second window from the same two users, should they be connected twice?*  
-No, please don't count multiple connections.  In other words, nodes can either be connected by one edge, or not connected at all.  However, you should ensure that the timestamp of the corresponding edge is properly updated.  
+* *Do I need to account for empty tweets?*  
+No, for simplicity you may assume that all the tweets contain at least one word.  However, many tweets contain only unicode chracters, which will be effectively empty after you clean them.  This means you will have to test properly when implementing the second feature on real data.   
+
+* *Do I need separate programs for different features?*  
+You may use a single combined program or several programs, as long as they are all executed by the `run.sh` script.
 
 * *Can I use an IDE like Eclipse to write my program?*  
-Yes, you can use what ever tools you want -  as long as your `run.sh` script correctly runs the relevant target files and creates the `output.txt` file in the `venmo_output` directory.
+Yes, you can use what ever tools you want -  as long as your `run.sh` script correctly runs the relevant target files and creates the `ft1.txt` and `ft2.txt` files in the `tweet_output` directory.
 
-* *What should be in the `venmo_input` directory?*  
-You can put any text file you want in the directory since our testing suite will replace it.  Indeed, using your own input files would be quite useful for testing.
+* *What should be in the `tweet_input` directory?*  
+You can put any text file you want in the directory.  In fact, this could be quite helpful for testing your solutions.
 
 * *How will the coding challenge be evaluated?*  
-Generally, we will evaluate your coding challenge with a testing suite that provides a variety of inputs and checks the corresponding output.  This suite will attempt to use your `run.sh` and is fairly tolerant to different runtime environments.  Of course, there are many aspects (e.g. clean code, documentation) that cannot be tested by our suite, so each submission will also be reviewed manually by a person. 
+Generally, we will evaluate your coding challenge with a testing suite that provides a variety of input tweets and checks the corresponding output.  This suite will attempt to use your 'run.sh' and is fairly tolerant to different runtime environments.  Of course, there are many aspects that cannot be tested by our suite, so each submission will be reviewed manually by a person as well. 
 
 * *How long will it take for me to hear back from you about my submission?*  
 We receive hundreds of submissions and try to evaluate them all in a timely manner.  We try to get back to all applicants within two or three weeks of submission, but if you have a specific deadline that requires expedited review, you may email us at cc@insightdataengineering.com.  
+

@@ -1,0 +1,7 @@
+{"text":"I'm at Terminal de Integra\u00e7\u00e3o do Varadouro in Jo\u00e3o Pessoa, PB https:\/\/t.co\/HOl34REL1a", "entities": {"hashtags": [{"text":"#Spark"}, {"text":"#Apache"}]}, "created_at": "Thu Oct 29 17:51:01 +0000 2015"}
+{"text":"I'm at Terminal de Integra\u00e7\u00e3o do Varadouro in Jo\u00e3o Pessoa, PB https:\/\/t.co\/HOl34REL1a","entities": {"hashtags": [{"text":"#Apache"}, {"text":"#Hadoop"}, {"text":"#Storm"}]}, "created_at": "Thu Oct 29 17:51:30 +0000 2015"}
+{"text":"I'm at Terminal de Integra\u00e7\u00e3o do Varadouro in Jo\u00e3o Pessoa, PB https:\/\/t.co\/HOl34REL1a","entities": {"hashtags": [{"text":"#Apache"}]}, "created_at": "Thu Oct 29 17:51:55 +0000 2015"}
+{"text":"I'm at Terminal de Integra\u00e7\u00e3o do Varadouro in Jo\u00e3o Pessoa, PB https:\/\/t.co\/HOl34REL1a","entities": {"hashtags": [{"text":"#Flink"}, {"text":"#Spark"}]}, "created_at": "Thu Oct 29 17:51:56 +0000 2015"}
+{"text":"Spark Summit East this week! #Spark #Apache","entities": {"hashtags": [{"text":"#HBase"}, {"text":"#Spark"}]}, "created_at": "Thu Oct 29 17:51:59 +0000 2015"}
+{"text":"Spark Summit East this week! #Spark #Apache","entities": {"hashtags": [{"text":"#Hadoop"}, {"text":"#Apache"}]}, "created_at": "Thu Oct 29 17:52:05 +0000 2015"}
+{"text":"Spark Summit East this week! #Spark #Apache","entities": {"hashtags": [{"text":"#Hadoop"}, {"text":"#Apache"}]}, "created_at": "Thu Oct 29 17:54:05 +0000 2015"}
